@@ -1,0 +1,162 @@
+from hashlib import md5; from time import time; import json
+
+class XGorgon:
+    """
+    Clase que calcula las cabeceras (headers) X-Gorgon y X-Khronos, 
+    necesarias para la validación de solicitudes en la API de TikTok.
+    """
+    def __init__(self, url, datos, cookie):
+
+        # Inicializa la clase con los parámetros de la solicitud HTTP
+        self._url   = url
+        self.datos  = datos # Cuerpo de la solicitud (si es POST/PUT)
+        self.cookie = cookie
+        
+    def _invertir_nibbles(self, num):
+        """
+        Función auxiliar: Invierte los dos nibbles (mitades de 4 bits) de un byte.
+        Ejemplo: 0xAB -> 0xBA
+        """
+        cadena_temp = self._formato_hex(num)
+        # Invierte los caracteres: 'ab' -> 'ba'
+        return int(cadena_temp[1:] + cadena_temp[:1], 16)
+        
+    def _RBIT(self, num):
+        """
+        Función auxiliar: Invierte el orden de los 8 bits de un byte.
+        Ejemplo: 10100010 -> 01000101
+        """
+        resultado = ''
+        cadena_temp = bin(num)[2:]
+        # Rellena con ceros a la izquierda para asegurar 8 bits
+        while len(cadena_temp) < 8:
+            cadena_temp = '0' + cadena_temp
+            
+        # Invierte la cadena de bits
+        for i in range(0, 8):
+            resultado = resultado + cadena_temp[7 - i]
+            
+        return int(resultado, 2)
+    
+    def _formato_hex(self, num):
+        """
+        Función auxiliar: Convierte un número a una cadena hexadecimal de 2 caracteres, 
+        rellenando con '0' si es necesario.
+        """
+        cadena_temp = hex(num)[2:]
+        if len(cadena_temp) < 2:
+            cadena_temp = '0' + cadena_temp
+        return cadena_temp
+
+    def calcular_gorgon(self):
+        """
+        Paso 1: Genera la cadena base de 128 caracteres (MD5s concatenados).
+        """
+        gorgon_base = ''
+        
+        # 1. MD5 de la URL
+        url_md5 = md5(bytearray(self._url, 'utf-8')).hexdigest()
+        gorgon_base += url_md5
+        
+        # 2. MD5 de los datos (o 32 ceros si no hay datos)
+        if self.datos:
+            # Asegúrate de que los datos sean una cadena antes de codificar
+            datos_md5 = md5(bytearray(str(self.datos), 'utf-8')).hexdigest()
+            gorgon_base += datos_md5
+        else:
+            gorgon_base += '00000000000000000000000000000000'
+            
+        # 3. MD5 de las cookies (o 32 ceros si no hay cookies)
+        if self.cookie:
+            cookie_md5 = md5(bytearray(self.cookie, 'utf-8')).hexdigest()
+            gorgon_base += cookie_md5
+        else:
+            gorgon_base += '00000000000000000000000000000000'
+            
+        # 4. 32 ceros de relleno final
+        gorgon_base += '00000000000000000000000000000000'
+        
+        # Pasa la cadena base al algoritmo principal
+        return self._calcular_xg(gorgon_base)
+    
+    def _calcular_xg(self, datos_base):
+        """
+        Paso 2: Algoritmo central para transformar la base MD5 en el valor X-Gorgon.
+        """
+        ts = int(time()) # Timestamp actual (valor para X-Khronos)
+        longitud = 0x14  # Longitud fija de la lista de parámetros (20)
+        
+        # Clave estática de 20 bytes para la operación XOR inicial
+        clave = [0xDF, 0x77, 0xB9, 0x40, 0xb9, 0x9b, 0x84, 0x83, 0xd1, 0xb9, 0xcb, 0xd1, 0xf7, 0xc2, 0xb9, 0x85, 0xc3, 0xd0, 0xfb, 0xc3]
+        
+        lista_parametros = []
+        
+        # Extraer 24 bytes (48 caracteres hex) de la cadena base
+        for i in range(0, 12, 4):
+            temp = datos_base[8 * i: 8 * (i + 1)]
+            for j in range(4):
+                H = int(temp[j * 2:(j + 1) * 2], 16)
+                lista_parametros.append(H)
+                
+        # Añadir bytes estáticos de relleno
+        lista_parametros.extend([0x0, 0x6, 0xB, 0x1C])
+        
+        # Añadir el timestamp (ts) como 4 bytes (big-endian)
+        H = int(hex(ts), 16)
+        lista_parametros.append((H & 0xFF000000) >> 24)
+        lista_parametros.append((H & 0x00FF0000) >> 16)
+        lista_parametros.append((H & 0x0000FF00) >> 8)
+        lista_parametros.append((H & 0x000000FF) >> 0)
+        
+        # 1. Aplicar la operación XOR con la clave estática
+        lista_resultado_xor = []
+        for A, B in zip(lista_parametros, clave):
+            lista_resultado_xor.append(A ^ B)
+            
+        # 2. Aplicar el bucle de transformación (reverse, RBIT, XOR)
+        for i in range(longitud):
+            C = self._invertir_nibbles(lista_resultado_xor[i]) # Inversión de nibbles
+            D = lista_resultado_xor[(i + 1) % longitud]       # Elemento siguiente (cíclico)
+            E = C ^ D
+            F = self._RBIT(E)                                 # Inversión de bits
+            H = ((F ^ 0xFFFFFFFF) ^ longitud) & 0xFF
+            lista_resultado_xor[i] = H
+            
+        # 3. Formatear el resultado en una cadena hexadecimal
+        resultado = ''
+        for param in lista_resultado_xor:
+            resultado += self._formato_hex(param)
+            
+        # 4. Concatenar el prefijo estático final
+        xgorgon = '0408b0d30000' + resultado
+        
+        # Devolver las cabeceras generadas
+        return {
+            'X-Gorgon': xgorgon, 
+            'X-Khronos': str(ts) # El timestamp es Khronos
+            }
+
+---
+
+## 💻 Ejemplo de Ejecución
+
+Este bloque muestra cómo inicializar la clase y generar las cabeceras.
+
+```python
+# --- Ejemplo de Uso ---
+
+# NOTA IMPORTANTE: Para que la cabecera X-Gorgon sea válida,
+#                  DEBES usar los parámetros reales de la solicitud.
+
+# Ejemplo con una URL y sin datos ni cookies
+generador = XGorgon(
+    url = '[https://ejemplo.com/aweme/v1/feed/?param1=val1&param2=val2](https://ejemplo.com/aweme/v1/feed/?param1=val1&param2=val2)',
+    datos = None,
+    cookie = None
+)
+
+# Ejecuta el cálculo
+cabeceras = generador.calcular_gorgon()
+
+# Imprime el resultado en formato JSON legible
+print(json.dumps(cabeceras, indent=4))
