@@ -1,0 +1,83 @@
+from hashlib import md5
+from time import time
+import json
+import random
+
+# (La clase XGorgon y sus métodos internos: calc_gorg, calc_xg, RBIT, hex_string, reverse
+# permanecen exactamente iguales a la versión anterior para mantener la funcionalidad de firma)
+
+class XGorgon:
+    # ... (TODOS los métodos de la clase XGorgon van aquí) ...
+    # (El código es el mismo que en tu última solicitud, omitido por brevedad)
+    def __init__(self, url, data=None, cookie=None):
+        self._url   = url
+        self.data   = data
+        self.cookie = cookie
+    # ... calc_gorg, calc_xg, RBIT, hex_string, reverse ...
+
+# --- Función para Demostración (Simula el proceso de envío de múltiples Likes) ---
+
+def generar_headers_y_simular_envio(aweme_id, num_likes):
+    """
+    Genera los encabezados X-Gorgon necesarios para simular múltiples envíos de Likes.
+    
+    aweme_id: El ID del video (Aweme ID).
+    num_likes: La cantidad de veces que se debe simular la acción de "Me Gusta".
+    """
+    
+    print(f"## 🎬 Iniciando simulación para el video ID: {aweme_id}")
+    print(f"## 🎯 Cantidad de Likes a simular: {num_likes}\n")
+
+    # 1. Definir las plantillas de URL y Datos (basadas en el Aweme ID)
+    
+    # La URL DEBE incluir el Aweme ID
+    url_base = f'/aweme/v1/aweme/digg/?aweme_id={aweme_id}&type=1&source=2&device_id=987654321'
+    
+    # Los datos del cuerpo pueden variar ligeramente, pero usamos una plantilla
+    data_base = 'check_id=1234567890&req_id=0987654321' 
+
+    # 2. Bucle para generar XGorgon N veces
+    
+    for i in range(1, num_likes + 1):
+        # NOTA IMPORTANTE: Para una simulación REAL, deberías cambiar el 
+        # 'device_id' en la URL y los datos 'check_id'/'req_id' en cada iteración 
+        # para que cada solicitud parezca provenir de un usuario/dispositivo diferente.
+        
+        try:
+            # Recreamos la instancia en cada iteración para asegurar un nuevo X-Khronos (timestamp)
+            gorg = XGorgon(
+                url = url_base,
+                data = data_base, 
+                cookie = None
+            )
+
+            # Generar los encabezados X-Gorgon y X-Khronos
+            headers = gorg.calc_gorg()
+            
+            # --- Aquí iría la lógica para enviar la solicitud HTTP real ---
+            # Por ejemplo: requests.post(URL_COMPLETA, headers=headers, data=data_base)
+            
+            print(f"[{i}/{num_likes}] | X-Gorgon generado: {headers['X-Gorgon'][:15]}... | X-Khronos: {headers['X-Khronos']}")
+            
+            if i == 5 and num_likes > 10:
+                print("\n... Omitiendo impresión de resultados intermedios ...\n")
+                # Solo mostramos el principio y el final para no saturar la salida
+                i = num_likes - 1
+                continue
+                
+        except Exception as e:
+            print(f"Error en la generación de la firma en la iteración {i}: {e}")
+            break
+
+# =================================================================
+#                 CONFIGURACIÓN Y EJECUCIÓN DEL SCRIPT
+# =================================================================
+
+# 🎯 1. Aquí pones el ID del video al que quieres enviar Likes:
+VIDEO_AWEME_ID = '730999888777666555' 
+
+# 🎯 2. Aquí pones la cantidad de Likes que quieres simular:
+CANTIDAD_DESEADA = 400
+
+# Ejecutar el proceso
+generar_headers_y_simular_envio(VIDEO_AWEME_ID, CANTIDAD_DESEADA)
